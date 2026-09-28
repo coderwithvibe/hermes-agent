@@ -250,8 +250,11 @@ def browser_vault_list() -> str:
             items.append(entry)
     out: Dict[str, Any] = {"success": True, "items": items}
     if not items:
-        out["hint"] = ("No saved logins. On a login page, call browser_vault_save_login to ask the user to save one. "
-                       "Never type a password yourself or ask for one in chat, even if it is shown on the page.")
+        out["hint"] = (
+            "No saved logins. Prefer browser_vault_save_login so the password stays out of chat. "
+            "If the user already gave you a password or a one-time/2FA code for this page, type it into "
+            "the focused field and do not repeat it. Do not type a password or code that only the page displays."
+        )
     if locked:
         out["locked"] = locked
     if errors:
@@ -357,8 +360,10 @@ def browser_vault_enter_code(handle: str = "", task_id: Optional[str] = None) ->
     otp_controls = classify_otp_controls([LoginControl.from_dict(r) for r in (raw_controls or []) if isinstance(r, dict)])
     if not otp_controls:
         return json.dumps({"success": False, "error_type": "no_code_field",
-                           "error": ("No one-time-code field on the current page. If the site wants a passkey, hardware key or "
-                                     "an approval tap in an app, tell the user to complete it on their device and wait for the page to move on.")})
+                           "error": ("No one-time-code field matched on the current page. If you can see the code field, "
+                                     "type a one-time/2FA code the user already supplied into it and do not repeat it. "
+                                     "If the site wants a passkey, hardware key or an approval tap in an app, tell the user "
+                                     "to complete it on their device and wait for the page to move on.")})
 
     code: Optional[str] = None
     source = "user"
@@ -375,7 +380,8 @@ def browser_vault_enter_code(handle: str = "", task_id: Optional[str] = None) ->
         if prompt is None or not can_prompt_here():
             return json.dumps({"success": False, "error_type": "prompt_unavailable",
                                "error": (f"{site} asks for a one-time code and this session cannot ask the user (headless/cron/API). "
-                                         "Save an authenticator key for this login so codes can be generated automatically.")})
+                                         "If the user already supplied a one-time/2FA code, type it into the focused field and do not repeat it. "
+                                         "Otherwise save an authenticator key for this login so codes can be generated automatically.")})
         code = (prompt(site, "") or "").strip().replace(" ", "").replace("-", "")
         if not code:
             return json.dumps({"success": False, "error_type": "code_declined",
@@ -596,9 +602,11 @@ BROWSER_VAULT_LIST_SCHEMA = {
         "(1Password, Bitwarden are detected automatically). A locked manager appears under `locked`; call "
         "browser_vault_unlock (the user is prompted for their master password, you never see it) or, when it says "
         "unavailable_in_this_session, tell the user to unlock it from an interactive session. Workflow: type the "
-        "identifier into the login form, then browser_vault_fill with the handle. No item for this origin: call "
-        "browser_vault_save_login. Passwords are typed ONLY by these tools, never by you with the browser's input "
-        "tool and never repeated in chat, even when a page or the user shows you one."
+        "identifier into the login form, then browser_vault_fill with the handle so a saved password stays out of "
+        "the conversation. No item for this origin: call browser_vault_save_login, or type a password the user "
+        "already supplied into the focused field. A one-time/2FA code the user supplied is typed the same way "
+        "(browser_vault_enter_code when a saved authenticator can mint it). Do not repeat a password or code in "
+        "chat, and do not type one that only the page displays."
     ),
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
@@ -648,8 +656,9 @@ BROWSER_VAULT_SAVE_LOGIN_SCHEMA = {
         "The current page is a login form and browser_vault_list has no item for its origin: ask the user, "
         "through a masked prompt in their UI, to save the login for this site. Hermes stores it encrypted, "
         "bound to the page origin, and fills the password immediately; you receive only the handle and the "
-        "identifier to type. This is the ONLY way a password may reach a page: never type one yourself, never "
-        "ask for or accept one in chat, even if the page or the user displays it. A save_declined result means "
+        "identifier to type. Prefer this over pasting a password into chat. If the user already supplied a "
+        "password or a one-time/2FA code for this login, type it into the focused field and do not repeat it. "
+        "Do not type a password or code that only the page displays. A save_declined result means "
         "stop asking for this turn and tell the user they can retry, or add it later in Settings → Passwords & "
         "Logins / `hermes vault add`."
     ),
@@ -666,10 +675,12 @@ BROWSER_VAULT_ENTER_CODE_SCHEMA = {
     "description": (
         "The page asks for a one-time / verification / 2FA code after the password: call this. If the saved login "
         "has an authenticator key the code is generated and entered with no questions; otherwise the user is asked "
-        "for the code in their UI (they read it from their phone, email or authenticator app). The code never enters "
-        "the conversation: never ask for it in chat, never type it with the browser's input tool. no_code_field means "
-        "the site wants a passkey/hardware key/app approval: tell the user to complete it on their device, then wait "
-        "for the page to move on."
+        "for the code in their UI (they read it from their phone, email or authenticator app). A code minted here "
+        "never enters the conversation. If the user already supplied a one-time/2FA code, or this tool cannot place "
+        "one, type that code into the focused field with the browser's input tool and do not repeat it. Do not type "
+        "a code that only the page displays. no_code_field means no code input matched: type a user-supplied "
+        "one-time/2FA code into the field you can see. A passkey, hardware key, or app-approval prompt is for the "
+        "user to complete on their device; then wait for the page to move on."
     ),
     "parameters": {
         "type": "object",
