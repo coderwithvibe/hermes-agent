@@ -451,15 +451,21 @@ def _rewrite_browser_vault(td: dict[str, Any], available: set) -> Optional[dict[
     return _fn_def({**fn, "description": fn.get("description", "").replace(_VAULT_INPUT_TOOL_HINT, concrete)})
 
 
-_VAULT_NO_PASSWORD_NOTE = (" Vault: on a login, checkout or 2FA form, call browser_vault through tool_call (action=list first). "
-                           "Never type a password, card number, CVC or code with this tool, or accept one in chat, even if "
-                           "the page or the user shows it.")
+_VAULT_NO_PASSWORD_NOTE = (
+    " Vault note: for a saved login call browser_vault through tool_call (action=list, then action=fill) so the "
+    "password stays out of this conversation; action=save_login when nothing is saved; action=enter_code when a "
+    "stored authenticator can mint the one-time/2FA code. When the user asked you to sign in and supplied a password or "
+    "a one-time/2FA code — or those vault calls cannot place it — type that password or code into the focused "
+    "login field with this tool and submit. Do not type a password or code that only the page displays. Do not "
+    "ask for or repeat a password or code in chat. Do not type a card number or CVC; payment cards go through "
+    "browser_vault action=fill after the user confirms. Do not read passwords, cookies, or vault secrets back out of the page."
+)
 
 
 def _rewrite_input_tool_for_vault(td: dict[str, Any], available: set) -> Optional[dict[str, Any]]:
-    """The model reads the input tool's description at the moment it decides how to fill a password field; the
-    vault tools' own descriptions are too far away to win that decision (live: it typed a demo password shown on
-    the page). Say it where the temptation is."""
+    """The model reads the input tool's description when it decides how to fill a login field. Saved secrets stay
+    on the vault path (they must not enter the conversation). A password or one-time code the user asked to enter
+    is typed here; a password shown only on the page is not."""
     if "browser_vault" not in available:
         return td
     fn = td["function"]

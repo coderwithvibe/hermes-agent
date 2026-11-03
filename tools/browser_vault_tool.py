@@ -296,8 +296,11 @@ def browser_vault_list() -> str:
             items.append(entry)
     out: dict[str, Any] = {"success": True, "items": items}
     if not items:
-        out["hint"] = ("No saved logins. On a login page, call browser_vault action=save_login to ask the user to save one. "
-                       "Never type a password yourself or ask for one in chat, even if it is shown on the page.")
+        out["hint"] = (
+            "No saved logins. Prefer browser_vault action=save_login so the password stays out of chat. "
+            "If the user already gave you a password or a one-time/2FA code for this page, type it into "
+            "the focused field and do not repeat it. Do not type a password or code that only the page displays."
+        )
     if locked:
         out["locked"] = locked
     if errors:
@@ -427,8 +430,10 @@ def browser_vault_enter_code(handle: str = "", task_id: Optional[str] = None) ->
     otp_controls = classify_otp_controls([LoginControl.from_dict(r) for r in (raw_controls or []) if isinstance(r, dict)])
     if not otp_controls:
         return json.dumps({"success": False, "error_type": "no_code_field",
-                           "error": ("No one-time-code field on the current page. If the site wants a passkey, hardware key or "
-                                     "an approval tap in an app, tell the user to complete it on their device and wait for the page to move on.")})
+                           "error": ("No one-time-code field matched on the current page. If you can see the code field, "
+                                     "type a one-time/2FA code the user already supplied into it and do not repeat it. "
+                                     "If the site wants a passkey, hardware key or an approval tap in an app, tell the user "
+                                     "to complete it on their device and wait for the page to move on.")})
 
     def write(code: str, source: str) -> str:
         register_vault_redaction_value(code)
@@ -454,7 +459,8 @@ def browser_vault_enter_code(handle: str = "", task_id: Optional[str] = None) ->
     if prompt is None or not can_prompt_here():
         return json.dumps({"success": False, "error_type": "prompt_unavailable",
                            "error": (f"{site} asks for a one-time code and this session cannot ask the user (headless/cron/API). "
-                                     "Save an authenticator key for this login so codes can be generated automatically.")})
+                                     "If the user already supplied a one-time/2FA code, type it into the focused field and do not repeat it. "
+                                     "Otherwise save an authenticator key for this login so codes can be generated automatically.")})
     code = (prompt(site, "") or "").strip().replace(" ", "").replace("-", "")
     if not code:
         return json.dumps({"success": False, "error_type": "code_declined",
@@ -639,17 +645,23 @@ def _confirm_payment_fill(label: str, origin: str) -> bool:
 BROWSER_VAULT_SCHEMA = {
     "name": "browser_vault",
     "description": (
-        "Fill saved logins, 2FA codes, cards and addresses on the CURRENT browser page. Secrets never "
-        "enter the conversation. "
+        "Fill saved logins, 2FA codes, cards and addresses on the CURRENT browser page. Secret values are never "
+        "returned and never enter the conversation. "
         "Actions: list (call first: saved logins/cards/addresses as handles; logins carry the identifier you type "
         "yourself with the browser's input tool; locked password managers appear under `locked`); fill (handle: "
         "the password for a login, card fields after the user confirms, address fields; refused unless the page "
-        "origin matches the item); save_login (nothing saved for this site: the user enters it in a masked prompt, "
-        "Hermes saves and fills it); enter_code (a one-time/2FA code after the password: generated from a saved "
-        "authenticator key or asked of the user; no_code_field means approve on their device); unlock (backend: "
-        "ask the user to unlock 1Password/Bitwarden). Never type, ask for or repeat a password, card number, CVC "
-        "or code yourself, even if the page or user shows one. Stop on save_declined; never retry "
-        "payment_declined."
+        "origin exactly matches the item); save_login (nothing saved for this site: the user enters it in a masked "
+        "prompt, Hermes saves and fills it — prefer this so a saved password stays out of the conversation. If the "
+        "user already supplied a password or a one-time/2FA code, type it into the focused field with the browser's "
+        "input tool and do not repeat it); enter_code (a one-time/2FA code after the password: generated from a saved "
+        "authenticator key, or asked of the user in their UI. A code minted here never enters the conversation. If the "
+        "user already supplied a one-time/2FA code, or this action cannot place one, type that code into the focused "
+        "field with the browser's input tool and do not repeat it. no_code_field means no code input matched: type a "
+        "user-supplied one-time/2FA code into the field you can see. A passkey, hardware key, or app-approval prompt "
+        "is for the user to complete on their device); unlock (backend: ask the user to unlock 1Password/Bitwarden). "
+        "Do not type a password or code that only the page displays. Do not type a card number or CVC; payment cards "
+        "go through action=fill after the user confirms. Do not read passwords, cookies, or vault secrets back out of "
+        "the page. Stop on save_declined; never retry payment_declined."
     ),
     "parameters": {
         "type": "object",
